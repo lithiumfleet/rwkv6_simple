@@ -1,3 +1,6 @@
+"""
+RWKV4/5 forward with loss
+"""
 # WARNING: this script only for rekv4/5
 """
 Full definition of a RWKV Language Model, all of it in this single file.

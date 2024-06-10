@@ -1,3 +1,6 @@
+"""
+This file from RWKV_Pytorch
+"""
 import os
 import sys
 # 获取当前脚本文件的路径

@@ -1,3 +1,6 @@
+"""
+This file from RWKV_Pytorch
+"""
 import os
 import sys
 # 获取当前脚本文件的路径
@@ -11,8 +14,9 @@ import json
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
-from rwkv6_simple import RWKV_TOKENIZER
-from MyRWKV import MY_RWKV_RNN as RWKV_RNN
+from .rwkv_tokenizer import RWKV_TOKENIZER
+from .model_utils import device_checker
+from .model import RWKV_RNN
 import torch
 
 
@@ -48,7 +52,9 @@ args = {
     , 'onnx_opset': 16,
     'dataformat': 'bf16'
 }
-device = 'cpu'
+args = device_checker(args)
+device = args['device']
+assert device in ['cpu', 'cuda', 'musa', 'npu', 'xpu']
 print(f"Device: {device}")
 
 
