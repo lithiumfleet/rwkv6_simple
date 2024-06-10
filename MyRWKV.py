@@ -1,9 +1,11 @@
+"""
+Current is RWKV in RNN mode. Not for training mode (GPT mode).
+"""
+
 import torch
 from torch import nn
 from torch.nn import functional as F
 import types
-
-
 
 
 class MY_RWKV_RNN(nn.Module):
@@ -163,68 +165,6 @@ How "att" works?
 """
 
 
-    # def layer_norm(self, x, w):
-    #     return F.layer_norm(x, (self.args.n_embd,), weight=w.weight, bias=w.bias)
-
-    # # @MyFunction
-    # def channel_mixing(self, x, state, i:int, time_maa_k, time_maa_r, kw, vw, rw):
-    #     """same as rwkv5"""
-    #     i0 = (2+self.head_size)*i+0
-    #     sx = state[i0] - x
-    #     xk = x + sx * time_maa_k
-    #     xr = x + sx * time_maa_r
-    #     state[i0] = x
-    #     r = torch.sigmoid(rw @ xr)
-    #     k = torch.square(torch.relu(kw @ xk)) # square relu, primer paper
-    #     return r * (vw @ k)
-
-    # # @MyFunction
-    # def time_mixing(self, x, state, i:int, x_maa, w_maa, k_maa, v_maa, r_maa, g_maa, tm_w1, tm_w2, td_w1, td_w2, time_first, time_decay, kw, vw, rw, gw, ow, ln_w, ln_b):
-    #     H = self.n_head
-    #     S = self.head_size
-
-    #     ############### prepare for mixed args ###############
-    #     i1 = (2+S)*i+1
-    #     sx = state[i1] - x
-    #     state[i1] = x
-    #     xxx = x + sx * x_maa
-    #     xxx = torch.tanh(xxx @ tm_w1).view(5, 1, -1)
-    #     xxx = torch.bmm(xxx, tm_w2).view(5, -1)
-    #     mw, mk, mv, mr, mg = xxx.unbind(dim=0)
-
-    #     xw = x + sx * (w_maa + mw)
-    #     xk = x + sx * (k_maa + mk)
-    #     xv = x + sx * (v_maa + mv)
-    #     xr = x + sx * (r_maa + mr)
-    #     xg = x + sx * (g_maa + mg)
-    #     ######################################################
-
-    #     ###############  previous version: w = exp(-exp(decay))  ################
-    #     w = (time_decay + (torch.tanh(xw @ td_w1) @ td_w2).float()).view(H, S, 1)
-    #     w = torch.exp(-torch.exp(w.float()))
-    #     #########################################################################
-
-    #     r = (rw @ xr).view(H, 1, S)
-    #     k = (kw @ xk).view(H, S, 1)
-    #     v = (vw @ xv).view(H, 1, S)
-    #     g = F.silu(gw @ xg)
-
-    #     s = state[(2+S)*i+2:(2+S)*(i+1), :].reshape(H, S, S)
-
-    #     x = torch.zeros(H, S)
-    #     a = k @ v
-    #     x = r @ (time_first * a + s) # wkv = (time_first * k@v + s); x = r @ wkv
-    #     ################ update status ###################
-    #     s = a + w * s # s *= w; s += k@v
-    #     state[(2+S)*i+2:(2+S)*(i+1), :] = s.reshape(S, -1)
-    #     ##################################################
-
-    #     x = x.flatten()
-
-    #     x = F.group_norm(x.unsqueeze(0), num_groups=H, weight=ln_w, bias=ln_b, eps = 64e-5).squeeze(0) * g # same as gn(x/8, eps=1e-5)
-    #     return ow @ x
-
-    # def forward(self, token, state):
 
 if __name__ == "__main__":
     args = types.SimpleNamespace()
@@ -233,4 +173,3 @@ if __name__ == "__main__":
     args.n_embd = 2048
     args.vocab_size = 65536
     my_rwkv_rnn = MY_RWKV_RNN(args)
-    print(my_rwkv_rnn)

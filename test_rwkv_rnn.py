@@ -2,7 +2,7 @@ import unittest
 import torch
 import types
 from unittest import TestCase
-from rwkv6_simple import RWKV_RNN
+from reference_code.rwkv6_simple import RWKV_RNN
 from MyRWKV import MY_RWKV_RNN
 
 
@@ -99,16 +99,20 @@ class TestRWKVRNN(TestCase):
             tout2 = self.my_rwkv.time_mixing(x, i,att, state2)
             self.assertTrue(torch.equal(tout1, tout2))
 
+
     def test_forward(self):
         with torch.no_grad():
             self.rwkv = RWKV_RNN(self.args)
             state1 = torch.ones(self.rwkv.args.n_layer * (2+self.rwkv.head_size), 2048)
             state2 = torch.ones(self.rwkv.args.n_layer * (2+self.rwkv.head_size), 2048)
             token = 123
+
             out1, state1 = self.rwkv.forward(token, state1)
             self.rwkv = None
             self.my_rwkv = MY_RWKV_RNN(self.args)
             out2, state2 = self.my_rwkv.forward(token, state2)
+            self.my_rwkv = None
+
             self.assertTrue(torch.equal(out1, out2))
             self.assertTrue(torch.equal(state1, state2))
 
