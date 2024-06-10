@@ -14,9 +14,9 @@ import json
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
-from .rwkv_tokenizer import RWKV_TOKENIZER
-from .model_utils import device_checker
-from .model import RWKV_RNN
+from rwkv_tokenizer import RWKV_TOKENIZER
+from model_utils import device_checker
+from model import RWKV_RNN
 import torch
 
 
@@ -43,80 +43,84 @@ class TextDataset(Dataset):
         return x, y
 
 
-# 初始化模型参数
-args = {
-    # 模型文件的名字，pth结尾的权重文件。
-    'MODEL_NAME': './weight/RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth',
-    'vocab_size': 65536  # 词表大小，不要乱改
-    , 'device': "cpu"    # ,'device': "cuda"
-    , 'onnx_opset': 16,
-    'dataformat': 'bf16'
-}
-args = device_checker(args)
-device = args['device']
-assert device in ['cpu', 'cuda', 'musa', 'npu', 'xpu']
-print(f"Device: {device}")
+def run_train():
+    # 初始化模型参数
+    args = {
+        # 模型文件的名字，pth结尾的权重文件。
+        'MODEL_NAME': './RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth',
+        'vocab_size': 65536  # 词表大小，不要乱改
+        , 'device': "cpu"    # ,'device': "cuda"
+        , 'onnx_opset': 16,
+        'dataformat': 'bf16'
+    }
+    args = device_checker(args)
+    device = args['device']
+    assert device in ['cpu', 'cuda', 'musa', 'npu', 'xpu']
+    print(f"Device: {device}")
 
 
-device = torch.device(args['device'])
-# 加载模型和分词器
-print("Loading model and tokenizer...")
-model = RWKV_RNN(args).to(device)
-tokenizer = RWKV_TOKENIZER("asset/rwkv_vocab_v20230424.txt")
-print("Done.")
+    device = torch.device(args['device'])
+    # 加载模型和分词器
+    print("Loading model and tokenizer...")
+    model = RWKV_RNN(args).to(device)
+    tokenizer = RWKV_TOKENIZER("./rwkv_vocab_v20230424.txt")
+    print("Done.")
 
-file_path = 'data/demo.jsonl'  # 替换为你的文本文件路径
-save_path = "./weight/rwkv-test-epoch-1.pth"
-# 设置续写的初始字符串和参数
-optimizer = torch.optim.Adam(model.parameters())
-criterion = nn.CrossEntropyLoss()
-slice_len = 8
-dataset = TextDataset(file_path, tokenizer)
-dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=4)
-accumulation_steps = 10  # 每 10 步更新一次参数
-epochs = 1
+    file_path = './data/toytext.jsonl'  # 替换为你的文本文件路径
+    save_path = "./ckpt-test-epoch-1.pth"
+    # 设置续写的初始字符串和参数
+    optimizer = torch.optim.Adam(model.parameters())
+    criterion = nn.CrossEntropyLoss()
+    slice_len = 8
+    dataset = TextDataset(file_path, tokenizer)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=4)
+    accumulation_steps = 2  # 每 2 步更新一次参数
+    epochs = 1
 
-# with torch.autograd.set_detect_anomaly(True): # 检测梯度异常
-for epoch in range(epochs):
-    accumulated_loss = 0
-    optimizer.zero_grad()
-    total_length = 0
-    prev_total_length = 0
-    with tqdm(dataloader) as tbar:
-        for step, (x, y) in enumerate(tbar, start=1):
-            x = x[0].to(device)
-            y = y[0].to(device)
-            data_len = x.shape[1]
-            state = model.init_state(batch_size=1).to(device)
-            total_length += data_len
-            prev_scale_factor = prev_total_length/total_length
-            accumulated_loss *= prev_scale_factor
-            # 根据序列的总长度对梯度进行规范化
-            for param in model.parameters():
-                if param.grad is not None:
-                    param.grad *= prev_scale_factor
-            # FIXME: 使用类自带的 forward_parallel_slices 方法
-            for i in range((data_len-2)//slice_len+1):
-                start = i*slice_len
-                end = min((i+1)*slice_len, data_len)
-                x_i = x[:, start:end]
-                y_i = y[0, start:end]
-                current_slice_len = x_i.shape[1]
-                token_out, state_new = model.forward_parallel(x_i, state)
-                state = state_new.detach()  # 使用 detach() 截断梯度传播
-                loss = criterion(token_out[0], y_i)
-                loss_weight = loss * (current_slice_len / total_length)
-                accumulated_loss += loss_weight.item()
-                loss_weight.backward()
+    # with torch.autograd.set_detect_anomaly(True): # 检测梯度异常
+    for epoch in range(epochs):
+        accumulated_loss = 0
+        optimizer.zero_grad()
+        total_length = 0
+        prev_total_length = 0
+        with tqdm(dataloader) as tbar:
+            for step, (x, y) in enumerate(tbar, start=1):
+                x = x[0].to(device)
+                y = y[0].to(device)
+                data_len = x.shape[1]
+                state = model.init_state(batch_size=1).to(device)
+                total_length += data_len
+                prev_scale_factor = prev_total_length/total_length
+                accumulated_loss *= prev_scale_factor
+                # 根据序列的总长度对梯度进行规范化
+                for param in model.parameters():
+                    if param.grad is not None:
+                        param.grad *= prev_scale_factor
+                # FIXME: 使用类自带的 forward_parallel_slices 方法
+                for i in range((data_len-2)//slice_len+1):
+                    start = i*slice_len
+                    end = min((i+1)*slice_len, data_len)
+                    x_i = x[:, start:end]
+                    y_i = y[0, start:end]
+                    current_slice_len = x_i.shape[1]
+                    token_out, state_new = model.forward_parallel(x_i, state)
+                    state = state_new.detach()  # 使用 detach() 截断梯度传播
+                    loss = criterion(token_out[0], y_i)
+                    loss_weight = loss * (current_slice_len / total_length)
+                    accumulated_loss += loss_weight.item()
+                    loss_weight.backward()
 
-            prev_total_length = total_length
+                prev_total_length = total_length
 
-            if step % accumulation_steps == 0 or step == len(dataloader):
-                optimizer.step()
-                optimizer.zero_grad()
-                total_length = 0
-                prev_total_length = 0
+                if step % accumulation_steps == 0 or step == len(dataloader):
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    total_length = 0
+                    prev_total_length = 0
 
-            tbar.set_postfix(avg_loss=accumulated_loss)
+                tbar.set_postfix(avg_loss=accumulated_loss)
 
-model.save_model(save_path)
+        model.save_model(save_path)
+
+if __name__ == "__main__":
+    run_train()

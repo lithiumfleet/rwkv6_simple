@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import Tuple
-from .model_utils import RWKV_x060
+from model_utils import RWKV_x060
 
 
 class RWKV_Block(nn.Module):
@@ -232,16 +232,27 @@ class RWKV_Block(nn.Module):
         x_kwvrg = x.unsqueeze(1) + sx.unsqueeze(1) * (self.att_stacked_weights + xxx)
         # shape: (batch_size, 5, hidden_size)
 
-        # 计算 w, r, k, v, g
+        # 计算 k, w, r, v, g
+        k = self.att_key(x_kwvrg[:, 0]).view(batch_size, H, S, 1)
         w = torch.exp(-torch.exp((self.att_time_decay + (torch.tanh(x_kwvrg[:, 1] @ self.att_time_decay_w1) @ self.att_time_decay_w2)).view(batch_size, H, S, 1)))
         r = self.att_receptance(x_kwvrg[:, 3]).view(batch_size, H, 1, S)
-        k = self.att_key(x_kwvrg[:, 0]).view(batch_size, H, S, 1)
         v = self.att_value(x_kwvrg[:, 2]).view(batch_size, H, 1, S)
         g = self.silu(self.att_gate(x_kwvrg[:, 4]))
 
         # 使用注意力机制更新状态
         s = state[:, (2+S)*i+2:(2+S)*(i+1), :].view(batch_size, H, S, S)
         a = k @ v
+        # NOTE: FROM HERE
+
+
+
+
+
+
+
+
+
+        
         x = r @ (self.att_time_faaaa * a + s)
         s = a + w * s
         state[:, (2+S)*i+2:(2+S)*(i+1), :] = s.view(batch_size, S, -1)
@@ -297,10 +308,10 @@ class RWKV_Block(nn.Module):
         x_kwvrg = x.unsqueeze(2) + sx_lerp.unsqueeze(2) * (self.att_stacked_weights.unsqueeze(0) + xxx)
         # shape: (batch_size, seq_length, 5, hidden_size)
         
-        # 计算 w, r, k, v, g
+        # 计算 k, w, r, v, g
+        k = self.att_key(x_kwvrg[:,:,0]).view(batch_size, L, H, S, 1)
         w = torch.exp(-torch.exp((self.att_time_decay + (torch.tanh(x_kwvrg[:,:,1] @ self.att_time_decay_w1) @ self.att_time_decay_w2)).view(batch_size, L, H, S, 1)))
         r = self.att_receptance(x_kwvrg[:,:,3]).view(batch_size, L, H, 1, S)  
-        k = self.att_key(x_kwvrg[:,:,0]).view(batch_size, L, H, S, 1)
         v = self.att_value(x_kwvrg[:,:,2]).view(batch_size, L, H, 1, S)
         g = self.silu(self.att_gate(x_kwvrg[:,:,4])) # [B, L, 2048]
 
@@ -393,7 +404,6 @@ class RWKV_RNN(nn.Module):
             self.load_params()
         
         self.eval()
-        
         
 
     def init_params(self):

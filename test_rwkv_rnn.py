@@ -96,7 +96,7 @@ class TestRWKVRNN(TestCase):
             tout1 = self.rwkv.time_mixing(self.rwkv.layer_norm(x, self.rwkv.w.blocks[i].ln1), state1, i, att.time_maa_x, att.time_maa_w, att.time_maa_k, att.time_maa_v, att.time_maa_r, att.time_maa_g, att.time_maa_w1, att.time_maa_w2, att.time_decay_w1, att.time_decay_w2, att.time_faaaa, att.time_decay, att.key.weight, att.value.weight, att.receptance.weight, att.gate.weight, att.output.weight, att.ln_x.weight, att.ln_x.bias)
             self.rwkv = None
             self.my_rwkv = MY_RWKV_RNN(self.args)
-            tout2 = self.my_rwkv.time_mixing(x, i,att, state2)
+            tout2 = self.my_rwkv._time_mixing(x, i,att, state2)
             self.assertTrue(torch.equal(tout1, tout2))
 
 
