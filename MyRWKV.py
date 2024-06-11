@@ -8,99 +8,14 @@ from torch.nn import functional as F
 from torch import Tensor
 import types
 from typing import Optional
-from dataclasses import dataclass, field
-from collections import namedtuple
-
-class DictLike:
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setitem__(self, key, value):
-        setattr(self, key, value)
-
-@dataclass
-class RWKV_Layernorm(DictLike):
-    weight:Tensor = field(default_factory=Tensor)
-    bias:Tensor = field(default_factory=Tensor)
-
-@dataclass
-class RWKV_Att(DictLike):
-    time_maa_x:Tensor = field(default_factory=Tensor)
-    time_maa_w:Tensor = field(default_factory=Tensor)
-    time_maa_k:Tensor = field(default_factory=Tensor)
-    time_maa_v:Tensor = field(default_factory=Tensor)
-    time_maa_r:Tensor = field(default_factory=Tensor)
-    time_maa_g:Tensor = field(default_factory=Tensor)
-    time_maa_w1:Tensor = field(default_factory=Tensor)
-    time_maa_w2:Tensor = field(default_factory=Tensor)
-    time_decay:Tensor = field(default_factory=Tensor)
-    time_decay_w1:Tensor = field(default_factory=Tensor)
-    time_decay_w2:Tensor = field(default_factory=Tensor)
-    time_faaaa:Tensor = field(default_factory=Tensor)
-    receptance_weight:Tensor = field(default_factory=Tensor)
-    key_weight:Tensor = field(default_factory=Tensor)
-    value_weight:Tensor = field(default_factory=Tensor)
-    output_weight:Tensor = field(default_factory=Tensor)
-    gate_weight:Tensor = field(default_factory=Tensor)
-    ln_x:RWKV_Layernorm = field(default_factory=RWKV_Layernorm)
-
-@dataclass
-class RWKV_Ffn(DictLike):
-    time_maa_k:Tensor = field(default_factory=Tensor)
-    time_maa_r:Tensor = field(default_factory=Tensor)
-    key_weight:Tensor = field(default_factory=Tensor)
-    receptance_weight:Tensor = field(default_factory=Tensor)
-    value_weight:Tensor = field(default_factory=Tensor)
-
-
-@dataclass
-class RWKV_Block(DictLike):
-    ln0:RWKV_Layernorm = field(default_factory=RWKV_Layernorm)
-    ln1:RWKV_Layernorm = field(default_factory=RWKV_Layernorm)
-    ln2:RWKV_Layernorm = field(default_factory=RWKV_Layernorm)
-    att:RWKV_Att = field(default_factory=RWKV_Att)
-    ffn:RWKV_Ffn = field(default_factory=RWKV_Ffn)
-
-@dataclass
-class RWKV_Weights(DictLike):
-    blocks:list[RWKV_Block] = field(default_factory=list)
-    emb_weight:Tensor = field(default_factory=Tensor)
-    ln_out:RWKV_Layernorm = field(default_factory=RWKV_Layernorm)
-    head_weight:Tensor = field(default_factory=Tensor)
-
 
 class MY_RWKV_RNN(nn.Module):
-    def load_weights(self, model_path:str):
-        self.weights = RWKV_Weights()
-        self.weights.blocks = [RWKV_Block() for _ in range(24)]
-        w = torch.load(model_path, map_location='cpu')
-        for k in w.keys():
-            w[k] = w[k].float()
-            if      '.time_' in k: w[k] = w[k].squeeze()
-            if '.time_faaaa' in k: w[k] = w[k].unsqueeze(-1)
-
-            if   k == 'emb.weight': self.weights.emb_weight = w[k]
-            elif k == 'ln_out.weight': self.weights.ln_out.weight = w[k]
-            elif k == 'ln_out.bias': self.weights.ln_out.bias = w[k]
-            elif k == 'head.weight': self.weights.head_weight = w[k]
-            else:
-                assert k.startswith('blocks')
-                if k == 'blocks.0.ln0.weight': self.weights.blocks[0].ln0.weight = w[k]
-                elif k == 'blocks.0.ln0.bias': self.weights.blocks[0].ln0.bias = w[k]
-                else:
-                    ks = k.split('.') # ['block','layer_index','sub1','sub2','optional_sub3']
-                    if len(ks) == 4:
-                        self.weights.blocks[int(ks[1])][ks[2]][ks[3]] = w[k]
-                    if len(ks) == 5:
-                        self.weights.blocks[int(ks[1])][ks[2]][ks[3]+'_'+ks[4]] = w[k]
-        print("load weights finish!")
-
 
     def __init__(self, args=None):
         super().__init__()
         self.args = args
         self.eval() # set torch to inference mode
-        self.weights:RWKV_Weights
+        # self.weights:RWKV_Weights
         if args is None:
             return
         w = torch.load(args.MODEL_NAME + '.pth', map_location='cpu')
@@ -256,10 +171,9 @@ How "att" works?
 
 
 if __name__ == "__main__":
-    # args = types.SimpleNamespace()
-    # args.MODEL_NAME = 'RWKV-x060-World-1B6-v2.1-20240328-ctx4096'
-    # args.n_layer = 24
-    # args.n_embd = 2048
-    # args.vocab_size = 65536
-    my_rwkv_rnn = MY_RWKV_RNN()
-    my_rwkv_rnn.load_weights('RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth')
+    args = types.SimpleNamespace()
+    args.MODEL_NAME = 'RWKV-x060-World-1B6-v2.1-20240328-ctx4096'
+    args.n_layer = 24
+    args.n_embd = 2048
+    args.vocab_size = 65536
+    model = MY_RWKV_RNN(args)

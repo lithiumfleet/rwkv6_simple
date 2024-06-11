@@ -242,17 +242,6 @@ class RWKV_Block(nn.Module):
         # 使用注意力机制更新状态
         s = state[:, (2+S)*i+2:(2+S)*(i+1), :].view(batch_size, H, S, S)
         a = k @ v
-        # NOTE: FROM HERE
-
-
-
-
-
-
-
-
-
-        
         x = r @ (self.att_time_faaaa * a + s)
         s = a + w * s
         state[:, (2+S)*i+2:(2+S)*(i+1), :] = s.view(batch_size, S, -1)
