@@ -111,14 +111,58 @@ class RWKV_Block(nn.Module):
         ) # init on use. shape [1, 1, 5, hidden_size]
         # expand x/sx_lerp in dim2 (seq_len dim)
         x_kwvrg = x.unsqueeze(2) + sx_lerp.unsqueeze(2) * (self.weights.att.stacked_weights + xxx) # x_kwvrg in shape [batch_size, 5, hidden_size]
-        raise NotImplementedError
 
+        # get k, w, r, v, g
+        k = self.weights.att.key_weight(x_kwvrg[:, :, 0]).view(batch_size, seq_len, num_heads, head_size, 1)
+        w = torch.exp(-torch.exp((self.weights.att.time_decay + (torch.tanh(x_kwvrg[:, :, 1] @ self.weights.att.time_decay_w1) @ self.weights.att.time_decay_w2)).view(batch_size, seq_len, num_heads, head_size, 1)))
+        r = self.weights.att.receptance_weight(x_kwvrg[:, :, 3]).view(batch_size, seq_len, num_heads, 1, head_size)
+        v = self.weights.att.value_weight(x_kwvrg[:, :, 2]).view(batch_size, seq_len, num_heads, 1, head_size)
+        g = F.silu(self.att_gate(x_kwvrg[:, :, 4])) # [batch_size, seq_len, 2048]
+
+        prev_state = state[:, i1+1:i1+1+head_size, :].view(batch_size, num_heads, head_size, head_size)
+        kv = k @ v
+
+        state_s = torch.zeros(batch_size, seq_len, num_heads, head_size, head_size, dtype=x.dtype, device=x.device)
+        state_s[:, 0] = prev_state
+        for l in range(seq_len-1):
+            prev_state = kv[:, l] + w[:, l] * prev_state.clone()
+            state_s[:, l+1] = prev_state
+        prev_state = (kv[:, -1] + w[:, -1] * prev_state).view(batch_size, head_size, -1)
+
+        wkv = state_s + self.weights.att.time_faaaa * kv
+        rwkv = (r @ wkv).flatten(start_dim=2)
+        normed_rwkv = F.group_norm(rwkv.unsqueeze(1), num_groups=num_heads, weight=self.weights.att.ln_x.weight, bias=self.weights.att.ln_x.bias, eps=64e-5).view(batch_size, seq_len, -1)
+        output = self.weights.att.output_weight @ (normed_rwkv * F.silu(g))
+
+        # update state
+        state[:, i1+1:i1+1+head_size] = prev_state
+
+        return output
 
     def _channel_mixing(self, x:Tensor, state:Tensor, i:int) -> Tensor:
-        raise NotImplementedError
-    
+        """
+        args:
+            x (Tensor): in shape [batch_size, seq_len, hidden_size], where hidden_size equals to _n_embd.
+            state (Tensor): in shape [batch_size, state_size, hidden_size]
+            i (int): time index
+        returns:
+            Tensor: in the same shape with state. [batch_size, state_size, hidden_size]
+        """
+        i0 = (2 + self._head_size) * i 
+        sx_lerp = torch.empty_like(x)
+        sx_lerp[:, 0] = state[:, i0] - x[:, 0]
+        state[:, i0] = x[:, -1]
+        xk = x + sx_lerp * self.weights.ffn.time_maa_k
+        xr = x + sx_lerp * self.weights.ffn.time_maa_r
+        r = torch.sigmoid(self.weights.ffn.receptance_weight(xr))
+        k = torch.relu(self.weights.ffn.key_weight(xk)).pow(2)
+        output = r * self.weights.ffn.value_weight(k)
+        return output
+
     def forward(self, x:Tensor, state:Tensor, i: int) -> torch.Tensor:
-        raise NotImplementedError
+        x = x + self._time_mixing(self._layer_norm(x, self.weights.ln1.weight, self.weights.ln1.bias, 1e-5), state, i)
+        x = x + self._channel_mixing(self._layer_norm(x, self.weights.ln2.weight, self.weights.ln2.bias, 1e-5), state, i)
+        return x
 
 
 
