@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import Tuple
-from model_utils import RWKV_x060
+from .model_utils import RWKV_x060
 
 
 class RWKV_Block(nn.Module):
@@ -284,7 +284,6 @@ class RWKV_Block(nn.Module):
         xxx = x + sx_lerp * self.att_time_maa_x # torch.Size([B, L, 2048])
         xxx = torch.tanh(xxx @ self.att_time_maa_w1).view(batch_size, L, 5, 1, -1) # att_time_maa_w1: [2048, 160]
         xxx = torch.matmul(xxx, self.att_time_maa_w2).view(batch_size, L, 5, -1) # [Batch, L, 5, 2048] 
-        
         # att_time_maa_w2: torch.Size([5, 32, 2048])
         # mw, mk, mv, mr, mg = xxx.unbind(dim=2) # [10, 100, 2048]
         # xw = x + sx_lerp * (self.att_time_maa_w + mw) # torch.Size([B, L, 2048])
@@ -314,7 +313,6 @@ class RWKV_Block(nn.Module):
         for l in range(L-1):
             s = a[:, l] + w[:, l] * s.clone() #这里计算出state_s的值.clone()
             state_s[:, l+1] = s # 循环赋值
-
         s = a[:, -1] + w[:, -1] * s #这里计算出最后一个state的值赋值给传入的state
         state[:, (2+S)*i+2:(2+S)*(i+1)] = s.view(batch_size, S, -1)
 
@@ -361,6 +359,7 @@ class RWKV_Block(nn.Module):
             torch.Tensor: 前向传播结果张量，形状与输入的x相同。
         """
         if self.onnx_opset >= 17:
+            return self.time_mixing_parallel(self.ln1(x), state, i) # break here
             x = x + self.time_mixing_parallel(self.ln1(x), state, i)
             x = x + self.channel_mixing_parallel(self.ln2(x), state, i)
         else:
