@@ -6,3 +6,4 @@ RWKV-4-Pile-430M-20220808-8066.pth
 .vscode/
 __pycache__/
 20B_tokenizer.json
+.pytest*

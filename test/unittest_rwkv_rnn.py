@@ -3,7 +3,7 @@ import torch
 import types
 from unittest import TestCase
 from reference_code.rwkv6_simple import RWKV_RNN
-from MyRWKV import MY_RWKV_RNN
+from src.MyRWKV import MY_RWKV_RNN
 
 
 class TestRWKVRNN(TestCase):

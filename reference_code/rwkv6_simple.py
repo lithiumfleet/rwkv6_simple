@@ -10,7 +10,8 @@ np.set_printoptions(precision=4, suppress=True, linewidth=200)
 import types, torch
 import torch.nn as nn
 from torch.nn import functional as F
-from MyRWKV import MY_RWKV_RNN
+from src.MyRWKV import MY_RWKV_RNN
+import os
 
 MyModule = torch.jit.ScriptModule
 MyFunction = torch.jit.script_method
@@ -22,7 +23,14 @@ class RWKV_TOKENIZER():
     def __init__(self, file_name):
         self.idx2token = {}
         sorted = [] # must be already sorted
-        lines = open(file_name, "r", encoding="utf-8").readlines()
+
+        assert os.path.exists(file_name), f"{file_name} is not exists!"
+        try:
+            lines = open(file_name, "r", encoding="utf-8").readlines()
+        except:
+            print(f"Error occurs when reading tokenizer file from {file_name}")
+            raise RuntimeError
+
         for l in lines:
             idx = int(l[:l.index(' ')])
             x = eval(l[l.index(' '):l.rindex(' ')])

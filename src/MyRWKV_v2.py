@@ -303,8 +303,6 @@ class MY_RWKV_RNN(nn.Module):
         return state
 
 
-
-
 if __name__ == "__main__":
     model = MY_RWKV_RNN()
     model.load_weights('RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth')

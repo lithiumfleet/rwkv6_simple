@@ -1,6 +1,6 @@
 import unittest
 from unittest import TestCase, skip
-from MyRWKV import MY_RWKV_RNN
+from src.MyRWKV import MY_RWKV_RNN
 import types
 from torch import equal
 

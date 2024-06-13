@@ -1,9 +1,11 @@
 # this test is for parallel forward
-from MyRWKV_v2 import MY_RWKV_RNN as MyRWKV
+import os
+parentdir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.sys.path.insert(0,parentdir) 
+
+from src.MyRWKV_v2 import MY_RWKV_RNN as MyRWKV
 from reference_code.model import RWKV_RNN as RWKV
 import torch
-import pytest
-import types
 
 
 
