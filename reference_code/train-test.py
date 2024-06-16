@@ -16,7 +16,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 from rwkv_tokenizer import RWKV_TOKENIZER
 from model_utils import device_checker
-from model import RWKV_RNN
+from .model import RWKV_RNN
 import torch
 
 

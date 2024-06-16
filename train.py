@@ -13,15 +13,14 @@ from torch import Tensor
 class TextDataset(Dataset):
     def __init__(self, model_path:str, tokenizer_path:str) -> None:
         self.tokenizer = RWKV_TOKENIZER(tokenizer_path)
-        self.data = []
         with open(model_path, "r", encoding="u8") as f:
-            for line in f.readlines():
-                self.data.append(json.loads(line))
+            self.data = json.load(f)
 
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> tuple[Tensor]:
+        # FIXME: tokenizer need chat_templete method
         raise NotImplementedError
 
 
@@ -37,6 +36,14 @@ class TrainingArgs:
     accumulation_steps = 2
 
 
+########## tools ###########
+def is_zero_grad(optimizer):
+    for param_group in optimizer.param_groups:
+        for param in param_group['params']:
+            if param.grad is not None:
+                if not torch.all(param.grad == 0):
+                    return False
+    return True
 
 
 ########## training loop ##########
@@ -49,13 +56,13 @@ loss_fn = torch.nn.CrossEntropyLoss()
 
 
 for epoch in trange(TrainingArgs.epoches, desc="epoch"):
-    accumulated_loss = 0.0
-    optimizer.zero_grad()
+    assert is_zero_grad(optimizer), "Between two epoches the optimizer is not set to zero state."
     for step, (input_ids,attn_mask,target_ids) in enumerate(dataset, start=1):
         state = model.new_zero_state(batch_size=1)
         logits, _ = model.forward(input_ids, state)
-        accumulated_loss += loss_fn(target_ids, logits) / sum(attn_mask)
-        if step % TrainingArgs.accumulation_steps == 0 or step == len(dataset):
+        loss = loss_fn(target_ids, logits) / attn_mask.sum()
+        loss.backward()
+        if step % TrainingArgs.accumulation_steps == 0 or step == len(dataset) - 1:
             optimizer.step()
             optimizer.zero_grad()
 
