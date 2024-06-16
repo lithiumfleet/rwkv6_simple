@@ -10,7 +10,7 @@ from torch import Tensor
 
 
 ########## Get data ##########
-class TextDataset(Dataset):
+class sftDataset(Dataset):
     def __init__(self, model_path:str, tokenizer_path:str) -> None:
         self.tokenizer = RWKV_TOKENIZER(tokenizer_path)
         with open(model_path, "r", encoding="u8") as f:
@@ -19,16 +19,50 @@ class TextDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+    def _get_attn_mask(self, input_ids:Tensor) -> Tensor:
+        role_flag = 1 # 1 denotes for user and 0 denotes for assistant
+        attn_mask = []
+        for token in input_ids:
+            if token == self.tokenizer.encode("<put user id here>"):
+                role_flag = 1
+                attn_mask.append(role_flag)
+            elif token == self.tokenizer.encode("<put assistant id here>"):
+                attn_mask.append(role_flag)
+                role_flag = 0
+            elif role_flag == 0 and token == self.tokenizer.encode("<put eos id here>"):
+                attn_mask.append(role_flag)
+                role_flag = 1
+            else:
+                attn_mask.append(role_flag)
+        raise NotImplementedError
+        return torch.as_tensor(attn_mask)
+
+    def _apply_chat_template(self, sample:list) -> Tensor:
+        return self.tokenizer.apply_chat_template(sample, tokenize=True)
+    
+    def _get_target_ids(self, input_ids:Tensor, attn_mask:Tensor):
+        target_ids = input_ids.clone().detach()
+        for index, mask in enumerate(attn_mask):
+            if mask == 1:
+                target_ids[index] = -100 # the default IGNORE_INDEX for CrossentropyLoss
+        raise NotImplementedError # TODO: not test yet
+        return target_ids
+        
+
     def __getitem__(self, index) -> tuple[Tensor]:
         # FIXME: tokenizer need chat_templete method
-        raise NotImplementedError
+        input_ids = self._apply_chat_template(self.data[index])
+        attn_mask = self._get_attn_mask(self.data[index])
+        target_ids = self._get_target_ids(input_ids, attn_mask)
+        raise NotImplementedError # TODO: not test yet
+        return (input_ids, attn_mask, target_ids)
 
 
 
 ########## hyper paramters ##########
 class TrainingArgs:
     ckpt_dir = "./ckpts"
-    data_dir = "./data/toytext.json"
+    data_dir = "./data/atri_with_history_2_9k_vicuna.json.json"
     model_path = "./model/RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth"
     tokenizer_path = "./model/rwkv_vocab_v20230424.txt"
     learning_rate = 1e-3
@@ -49,7 +83,7 @@ def is_zero_grad(optimizer):
 ########## training loop ##########
 
 # load dataset
-dataset = TextDataset(TrainingArgs.data_dir)
+dataset = sftDataset(TrainingArgs.data_dir)
 model = MY_RWKV_RNN(TrainingArgs.model_path)
 optimizer = torch.optim.Adam(model.parameters(), TrainingArgs.learning_rate)
 loss_fn = torch.nn.CrossEntropyLoss()
@@ -59,7 +93,7 @@ for epoch in trange(TrainingArgs.epoches, desc="epoch"):
     assert is_zero_grad(optimizer), "Between two epoches the optimizer is not set to zero state."
     for step, (input_ids,attn_mask,target_ids) in enumerate(dataset, start=1):
         state = model.new_zero_state(batch_size=1)
-        logits, _ = model.forward(input_ids, state)
+        logits, _ = model.forward(input_ids, state)  # FIXME: forward with attn mask.
         loss = loss_fn(target_ids, logits) / attn_mask.sum()
         loss.backward()
         if step % TrainingArgs.accumulation_steps == 0 or step == len(dataset) - 1:

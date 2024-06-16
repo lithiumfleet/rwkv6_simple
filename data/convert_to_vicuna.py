@@ -26,7 +26,6 @@ class SharegptFormat:
 # },
 
 
-
 def convert_one_sample(fp, sample, suffix=""):
     assert fp.writable(), "Error: fp is closed."
 
@@ -53,7 +52,7 @@ with open(save_as, "w", encoding="u8") as fp:
     # adjust the format
     fp.write("[\n")
 
-    index = 0 # so i can't find tenumerate....
+    index = 0 # i can't find tenumerate, so....
     for sample in tqdm(raw_dataset, desc="converting"):
         if index != len(raw_dataset)-1:
             convert_one_sample(fp, sample, ",\n")
