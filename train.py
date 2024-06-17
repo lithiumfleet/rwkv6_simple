@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Dataset
-from reference_code.rwkv6_simple import RWKV_TOKENIZER
+from src.MyTokenizer import MY_TOKENIZER as RWKV_TOKENIZER
 import json
 from dataclasses import dataclass
 import os
@@ -15,6 +15,7 @@ class sftDataset(Dataset):
         self.tokenizer = RWKV_TOKENIZER(tokenizer_path)
         with open(model_path, "r", encoding="u8") as f:
             self.data = json.load(f)
+        raise NotImplementedError("not test getitem yet!")
 
     def __len__(self):
         return len(self.data)
@@ -23,38 +24,34 @@ class sftDataset(Dataset):
         role_flag = 1 # 1 denotes for user and 0 denotes for assistant
         attn_mask = []
         for token in input_ids:
-            if token == self.tokenizer.encode("<put user id here>"):
+            if token == self.tokenizer.encode(self.tokenizer.sp_user):
                 role_flag = 1
                 attn_mask.append(role_flag)
-            elif token == self.tokenizer.encode("<put assistant id here>"):
+            elif token == self.tokenizer.encode(self.tokenizer.sp_assistant):
                 attn_mask.append(role_flag)
                 role_flag = 0
-            elif role_flag == 0 and token == self.tokenizer.encode("<put eos id here>"):
+            elif role_flag == 0 and token == self.tokenizer.encode(self.tokenizer.sp_eos):
                 attn_mask.append(role_flag)
                 role_flag = 1
             else:
                 attn_mask.append(role_flag)
-        raise NotImplementedError
         return torch.as_tensor(attn_mask)
 
     def _apply_chat_template(self, sample:list) -> Tensor:
-        return self.tokenizer.apply_chat_template(sample, tokenize=True)
+        return self.tokenizer.apply_chat_template(sample, need_tokenize=True)
     
     def _get_target_ids(self, input_ids:Tensor, attn_mask:Tensor):
         target_ids = input_ids.clone().detach()
         for index, mask in enumerate(attn_mask):
             if mask == 1:
                 target_ids[index] = -100 # the default IGNORE_INDEX for CrossentropyLoss
-        raise NotImplementedError # TODO: not test yet
         return target_ids
         
 
     def __getitem__(self, index) -> tuple[Tensor]:
-        # FIXME: tokenizer need chat_templete method
         input_ids = self._apply_chat_template(self.data[index])
         attn_mask = self._get_attn_mask(self.data[index])
         target_ids = self._get_target_ids(input_ids, attn_mask)
-        raise NotImplementedError # TODO: not test yet
         return (input_ids, attn_mask, target_ids)
 
 

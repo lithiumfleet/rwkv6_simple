@@ -8,3 +8,4 @@ __pycache__/
 20B_tokenizer.json
 .pytest*
 atri*
+*.bak
