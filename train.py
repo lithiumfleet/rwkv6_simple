@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Dataset
-from reference_code.rwkv6_simple import RWKV_TOKENIZER
+from src.MyTokenizer import MY_TOKENIZER as RWKV_TOKENIZER
 import json
 from dataclasses import dataclass
 import os
@@ -38,7 +38,7 @@ class sftDataset(Dataset):
         return torch.as_tensor(attn_mask)
 
     def _apply_chat_template(self, sample:list) -> Tensor:
-        return self.tokenizer.apply_chat_template(sample, tokenize=True)
+        return self.tokenizer.apply_chat_template(sample, need_tokenize=True)
     
     def _get_target_ids(self, input_ids:Tensor, attn_mask:Tensor):
         target_ids = input_ids.clone().detach()

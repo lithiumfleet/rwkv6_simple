@@ -115,8 +115,6 @@ def sample_logits(out, temperature=1.0, top_p=0.8):
 
 ########################################################################################################
 
-tokenizer = RWKV_TOKENIZER("rwkv_vocab_v20230424.txt")
-
 args = types.SimpleNamespace()
 args.MODEL_NAME = 'RWKV-x060-World-1B6-v2.1-20240328-ctx4096'
 args.n_layer = 24
@@ -247,6 +245,8 @@ class RWKV_RNN(nn.Module):
             return x.float(), state
 
 if __name__ == "__main__":
+    tokenizer = RWKV_TOKENIZER("rwkv_vocab_v20230424.txt")
+
     print(f'\nUsing CPU. Loading {args.MODEL_NAME} ...')
     model = MY_RWKV_RNN(args)
 
