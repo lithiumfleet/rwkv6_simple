@@ -7,5 +7,5 @@ inspired by https://github.com/yuunnn-w/RWKV_Pytorch and https://github.com/Blin
 
 #### TODO
 
-+ [ ] parallel forward with attention mask
++ [x] parallel forward with attention mask
 + [x] tokenizer apply_chat_template method

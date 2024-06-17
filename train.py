@@ -11,11 +11,10 @@ from torch import Tensor
 
 ########## Get data ##########
 class sftDataset(Dataset):
-    def __init__(self, model_path:str, tokenizer_path:str) -> None:
+    def __init__(self, ds_file_path:str, tokenizer_path:str) -> None:
         self.tokenizer = RWKV_TOKENIZER(tokenizer_path)
-        with open(model_path, "r", encoding="u8") as f:
+        with open(ds_file_path, "r", encoding="u8") as f:
             self.data = json.load(f)
-        raise NotImplementedError("not test getitem yet!")
 
     def __len__(self):
         return len(self.data)
@@ -23,22 +22,22 @@ class sftDataset(Dataset):
     def _get_attn_mask(self, input_ids:Tensor) -> Tensor:
         role_flag = 1 # 1 denotes for user and 0 denotes for assistant
         attn_mask = []
-        for token in input_ids:
-            if token == self.tokenizer.encode(self.tokenizer.sp_user):
+        for token in input_ids: # FIXME: no batch support
+            if token == self.tokenizer.encode(self.tokenizer.sp_user)[0]:
                 role_flag = 1
                 attn_mask.append(role_flag)
-            elif token == self.tokenizer.encode(self.tokenizer.sp_assistant):
+            elif token == self.tokenizer.encode(self.tokenizer.sp_assistant)[0]:
                 attn_mask.append(role_flag)
                 role_flag = 0
-            elif role_flag == 0 and token == self.tokenizer.encode(self.tokenizer.sp_eos):
+            elif role_flag == 0 and token == self.tokenizer.encode(self.tokenizer.sp_eos)[0]:
                 attn_mask.append(role_flag)
                 role_flag = 1
             else:
                 attn_mask.append(role_flag)
         return torch.as_tensor(attn_mask)
 
-    def _apply_chat_template(self, sample:list) -> Tensor:
-        return self.tokenizer.apply_chat_template(sample, need_tokenize=True)
+    def _apply_chat_template(self, sample:list, need_tokenize=False) -> Tensor:
+        return self.tokenizer.apply_chat_template(sample, need_tokenize)
     
     def _get_target_ids(self, input_ids:Tensor, attn_mask:Tensor):
         target_ids = input_ids.clone().detach()
@@ -49,8 +48,8 @@ class sftDataset(Dataset):
         
 
     def __getitem__(self, index) -> tuple[Tensor]:
-        input_ids = self._apply_chat_template(self.data[index])
-        attn_mask = self._get_attn_mask(self.data[index])
+        input_ids = self._apply_chat_template(self.data[index], need_tokenize=True)
+        attn_mask = self._get_attn_mask(input_ids)
         target_ids = self._get_target_ids(input_ids, attn_mask)
         return (input_ids, attn_mask, target_ids)
 
@@ -78,23 +77,24 @@ def is_zero_grad(optimizer):
 
 
 ########## training loop ##########
+if __name__ == "__main__":
 
-# load dataset
-dataset = sftDataset(TrainingArgs.data_dir)
-model = MY_RWKV_RNN(TrainingArgs.model_path)
-optimizer = torch.optim.Adam(model.parameters(), TrainingArgs.learning_rate)
-loss_fn = torch.nn.CrossEntropyLoss()
+    # load dataset
+    dataset = sftDataset(TrainingArgs.data_dir)
+    model = MY_RWKV_RNN(TrainingArgs.model_path)
+    optimizer = torch.optim.Adam(model.parameters(), TrainingArgs.learning_rate)
+    loss_fn = torch.nn.CrossEntropyLoss()
 
 
-for epoch in trange(TrainingArgs.epoches, desc="epoch"):
-    assert is_zero_grad(optimizer), "Between two epoches the optimizer is not set to zero state."
-    for step, (input_ids,attn_mask,target_ids) in enumerate(dataset, start=1):
-        state = model.new_zero_state(batch_size=1)
-        logits, _ = model.forward(input_ids, state)  # FIXME: forward with attn mask.
-        loss = loss_fn(target_ids, logits) / attn_mask.sum()
-        loss.backward()
-        if step % TrainingArgs.accumulation_steps == 0 or step == len(dataset) - 1:
-            optimizer.step()
-            optimizer.zero_grad()
+    for epoch in trange(TrainingArgs.epoches, desc="epoch"):
+        assert is_zero_grad(optimizer), "Between two epoches the optimizer is not set to zero state."
+        for step, (input_ids,attn_mask,target_ids) in enumerate(dataset, start=1):
+            state = model.new_zero_state(batch_size=1)
+            logits, _ = model.forward(input_ids, state, attn_mask)
+            loss = loss_fn(target_ids, logits) / attn_mask.sum()
+            loss.backward()
+            if step % TrainingArgs.accumulation_steps == 0 or step == len(dataset) - 1:
+                optimizer.step()
+                optimizer.zero_grad()
 
-raise NotImplementedError
+    raise NotImplementedError("need to save model.")

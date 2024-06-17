@@ -80,7 +80,8 @@ class RWKV_TOKENIZER():
         return tokens
 
     def decodeBytes(self, tokens):
-        return b''.join(map(lambda i: self.idx2token[i], tokens))
+        # FIXME: do not inject -100 token to it...
+        return b''.join(map(lambda i: self.idx2token[i] if i != -100 else " IGNORE".encode("u8"), tokens))
 
     def encode(self, src: str):
         return self.encodeBytes(src.encode("utf-8"))
