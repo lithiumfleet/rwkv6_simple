@@ -4,7 +4,7 @@ os.sys.path.insert(0,parentdir)
 from src.MyTokenizer import MY_TOKENIZER
 import pytest
 
-@pytest.skip("you can see the conslone to check.")
+# @pytest.mark.skip("you can see the conslone to check.")
 def test_template():
     tokenizer = MY_TOKENIZER("D:\\rwkv_simple\\model\\rwkv_vocab_v20230424.txt")
     conversation = [

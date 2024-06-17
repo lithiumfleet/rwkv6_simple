@@ -135,7 +135,7 @@ class RWKV_Block(nn.Module):
         ln2.bias = nn.Parameter(weights.ln2.bias)
         return att, ln1, ffn, ln2
 
-    def _time_mixing(self, x:Tensor, state:Tensor, i:int) -> Tensor:
+    def _time_mixing(self, x:Tensor, state:Tensor, i:int, attn_mask:Optional[Tensor]=None) -> Tensor:
         """
         args:
             x (Tensor): in shape [batch_size, seq_len, hidden_size], where hidden_size equals to _n_embd.
@@ -174,10 +174,13 @@ class RWKV_Block(nn.Module):
         w = torch.exp(-torch.exp((self.att.time_decay + (torch.tanh(x_kwvrg[:, :, 1] @ self.att.time_decay_w1) @ self.att.time_decay_w2)).view(batch_size, seq_len, num_heads, head_size, 1)))
         r = self.att.receptance_weight(x_kwvrg[:, :, 3]).view(batch_size, seq_len, num_heads, 1, head_size)
         v = self.att.value_weight(x_kwvrg[:, :, 2]).view(batch_size, seq_len, num_heads, 1, head_size)
-        g = F.silu(self.att.gate_weight(x_kwvrg[:, :, 4]), inplace=False) # [batch_size, seq_len, 2048]
+        g = F.silu(self.att.gate_weight(x_kwvrg[:, :, 4]), inplace=False).view(batch_size, seq_len, 2048) 
+        if attn_mask is not None:
+            assert not isinstance(attn_mask, RWKV_Block) or attn_mask is None
+            k,w,r,v,g = self._set_zero(attn_mask, k,w,r,v,g)
 
         prev_state = state[:, i1+1:i1+1+head_size, :].view(batch_size, num_heads, head_size, head_size)
-        kv = k @ v
+        kv = k @ v # kv in shape: [batch_size, seq_len, num_heads, head_size, heas_size]
 
         state_s = torch.zeros(batch_size, seq_len, num_heads, head_size, head_size, dtype=x.dtype, device=x.device)
         state_s[:, 0] = prev_state
@@ -195,7 +198,22 @@ class RWKV_Block(nn.Module):
 
         return output
 
-    def _channel_mixing(self, x:Tensor, state:Tensor, i:int) -> Tensor:
+    @staticmethod
+    def _set_zero(attn_mask:Tensor, *kwrvg:Tensor) -> tuple[Tensor]:
+        for item in kwrvg: # outer loop
+            for i, seq_mask in enumerate(attn_mask): # batch loop
+                for j, mask_val in enumerate(seq_mask): # seqence loop
+                    if mask_val == 0:
+                        if item.ndim == 3:
+                            item[i, j, :] = 0
+                        elif item.ndim == 5:
+                            item[i, j, :, :, :] = 0
+                        else:
+                            raise RuntimeError(f"Shape {item.shape} is not pre-set in code.")
+        return kwrvg
+
+
+    def _channel_mixing(self, x:Tensor, state:Tensor, i:int, attn_mask:Optional[Tensor]=None) -> Tensor:
         """
         args:
             x (Tensor): in shape [batch_size, seq_len, hidden_size], where hidden_size equals to _n_embd.
@@ -207,18 +225,21 @@ class RWKV_Block(nn.Module):
         i0 = (2 + self._head_size) * i 
         sx_lerp = torch.empty_like(x)
         sx_lerp[:, 0] = state[:, i0] - x[:, 0]
+        sx_lerp[:, 1:] = x[:, :-1] - x[:, 1:]
         state[:, i0] = x[:, -1]
         xk = x + sx_lerp * self.ffn.time_maa_k
         xr = x + sx_lerp * self.ffn.time_maa_r
         r = torch.sigmoid(self.ffn.receptance_weight(xr))
         k = torch.relu(self.ffn.key_weight(xk)).pow(2)
+        if attn_mask is not None:
+            assert not isinstance(attn_mask, RWKV_Block) or attn_mask is None
+            self._set_zero(attn_mask, r,k)
         output = r * self.ffn.value_weight(k)
         return output
 
-    def forward(self, x:Tensor, state:Tensor, i: int) -> torch.Tensor:
-        return self._time_mixing(self.ln1(x), state, i) # break here
-        x = x + self._time_mixing(self.ln1(x), state, i)
-        x = x + self._channel_mixing(self.ln2(x), state, i)
+    def forward(self, x:Tensor, state:Tensor, i: int, attn_mask:Optional[Tensor]=None) -> torch.Tensor:
+        x = x + self._time_mixing(self.ln1(x), state, i, attn_mask)
+        x = x + self._channel_mixing(self.ln2(x), state, i, attn_mask)
         return x
 
 
@@ -289,11 +310,11 @@ class MY_RWKV_RNN(nn.Module):
 
         print("load weights finish!")
 
-    def forward(self, input_ids:Tensor, state:Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, input_ids:Tensor, state:Tensor, attn_mask:Optional[Tensor]=None) -> tuple[Tensor, Tensor]:
         x = self.embedding(input_ids)
         x = self.layer_norm_0(x)
         for i, block in enumerate(self.blocks):
-            x = block.forward(x, state, i)
+            x = block.forward(x, state, i, attn_mask)
         x = self.layer_norm_out(x)
         x = self.lm_head(x)
         return x, state
@@ -305,4 +326,4 @@ class MY_RWKV_RNN(nn.Module):
 
 if __name__ == "__main__":
     model = MY_RWKV_RNN()
-    model.load_weights('RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth')
+    model.load_weights('../model/RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth')

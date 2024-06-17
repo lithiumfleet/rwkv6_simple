@@ -359,7 +359,6 @@ class RWKV_Block(nn.Module):
             torch.Tensor: 前向传播结果张量，形状与输入的x相同。
         """
         if self.onnx_opset >= 17:
-            return self.time_mixing_parallel(self.ln1(x), state, i) # break here
             x = x + self.time_mixing_parallel(self.ln1(x), state, i)
             x = x + self.channel_mixing_parallel(self.ln2(x), state, i)
         else:

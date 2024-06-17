@@ -6,12 +6,13 @@ os.sys.path.insert(0,parentdir)
 from src.MyRWKV_v2 import MY_RWKV_RNN as MyRWKV
 from reference_code.model import RWKV_RNN as RWKV
 import torch
+import pytest
 
 
-
+# @pytest.mark.skip("it's right")
 def test_forward():
     args = {}
-    args['MODEL_NAME'] = 'RWKV-x060-World-1B6-v2.1-20240328-ctx4096'
+    args['MODEL_NAME'] = './model/RWKV-x060-World-1B6-v2.1-20240328-ctx4096'
     args['n_layer'] = 24
     args['n_embd'] = 2048
     args['vocab_size'] = 65536
@@ -20,7 +21,7 @@ def test_forward():
 
     input_ids = torch.as_tensor([[1,2,1,9,3,4,5,2,3,5,4,6]])
 
-    my_model = MyRWKV('RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth')
+    my_model = MyRWKV('./model/RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth')
     state1 = my_model.new_zero_state(1)
     output1, _state1 = my_model.forward(input_ids, state1)
 
