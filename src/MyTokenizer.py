@@ -24,7 +24,7 @@ class MY_TOKENIZER(RWKV_TOKENIZER):
             role_content = line['content']
             result += role_tag+role_content+"<|eos|>"
         if need_tokenize:
-            return torch.as_tensor(self.encode(result))
+            return torch.as_tensor(self.encode(result), dtype=int).long()
         else:
             return result
 

@@ -1,11 +1,7 @@
 .env/
 .vscode/
 RWKV-x060-World-1B6-v2.1-20240328-ctx4096.pth
-rwkv_vocab_v20230424.txt
 RWKV-4-Pile-430M-20220808-8066.pth
 .vscode/
 __pycache__/
-20B_tokenizer.json
 .pytest*
-atri*
-*.bak
