@@ -7,6 +7,7 @@ import os
 from src.MyRWKV_v2 import MY_RWKV_RNN
 from tqdm import trange, tqdm
 from torch import Tensor
+from functools import partial
 
 
 ########## Get data ##########
@@ -51,6 +52,7 @@ class sftDataset(Dataset):
         input_ids = self._apply_chat_template(self.data[index], need_tokenize=True)
         attn_mask = self._get_attn_mask(input_ids)
         target_ids = self._get_target_ids(input_ids, attn_mask)
+        assert input_ids.shape[0]!=0 and attn_mask.shape[0]!=0 and target_ids.shape[0]!=0, "input_ids, attn_mask, target_ids can't be zero length."
         return (input_ids, attn_mask, target_ids)
 
 
@@ -64,7 +66,8 @@ class TrainingArgs:
     learning_rate = 1e-3
     epoches = 4
     accumulation_steps = 2
-
+    max_model_len = 2048
+    sp_pad_tokenid = 0 # FIXME: currently sp_pad_tokenid need to pass to TraningArgs manually, otherwise cannot init the dataloader.
 
 ########## tool func ###########
 def is_zero_grad(optimizer):
@@ -75,19 +78,42 @@ def is_zero_grad(optimizer):
                     return False
     return True
 
-def collate_batch(raw_batch:list[tuple[Tensor]]) -> tuple[Tensor]:
-    input_ids = torch.stack([x[0] for x in raw_batch], dim=0)
-    attn_mask = torch.stack([y[1] for y in raw_batch], dim=0)
-    target_ids= torch.stack([z[2] for z in raw_batch], dim=0)
-    batch = (input_ids, attn_mask, target_ids)
-    # FIXME: current method is not a good block loader:
-    # current batch[0] for example:
-    # [===================== max model length ==========================]
-    # [ [321,343,5345,556,123,432,453]
-    #   [321,343,5345,556]
-    #   [321,343,5345,324,534] ]
-    # so must have a function to auto concat and right pad
-    raise NotImplementedError("need a block collator")
+def _group_index(each_len:list[int], max_model_len:int) -> list[list[int]]:
+    """
+    return grouped index of each sample in raw_batch.
+    ensure index of samples in the same list can concat and (nearly) reach to max_model_len.
+    """
+    result = []
+    added_index = set()
+    while len(added_index) < len(each_len):
+        current_res = []
+        current_len = 0
+        for index, length in enumerate(each_len):
+            if index not in added_index and max_model_len-current_len >= length:
+                current_res.append(index)
+                added_index.add(index)
+                current_len += length
+        result.append(current_res)
+    return result
+
+def _concat_and_pad(sample:list[Tensor], max_model_len:int, pad_token:int) -> Tensor:
+    concated_sample = torch.concat(sample)
+    assert concated_sample.shape[0] <= max_model_len
+    pad_seq = torch.as_tensor([pad_token for _ in range(max_model_len-concated_sample.shape[0])])
+    padded_sample = torch.concat([concated_sample, pad_seq])
+    assert padded_sample.shape[0] <= max_model_len
+    return padded_sample
+
+def _collate_batch(raw_batch:list[tuple[Tensor]], max_model_len:int) -> list[tuple[Tensor]]:
+    each_len = [sample[0].shape[0] for sample in raw_batch]
+    grouped_index = _group_index(each_len, max_model_len)
+
+    batch = []
+    for indexs in grouped_index:
+        input_ids = _concat_and_pad([raw_batch[i][0] for i in indexs], max_model_len, TrainingArgs.sp_pad_tokenid)
+        attn_mask = _concat_and_pad([raw_batch[i][1] for i in indexs], max_model_len, TrainingArgs.sp_pad_tokenid)
+        target_ids= _concat_and_pad([raw_batch[i][2] for i in indexs], max_model_len, TrainingArgs.sp_pad_tokenid)
+        batch.append(tuple([input_ids, attn_mask, target_ids]))
     return batch
 
 
@@ -95,7 +121,14 @@ def collate_batch(raw_batch:list[tuple[Tensor]]) -> tuple[Tensor]:
 if __name__ == "__main__":
 
     # load dataset
-    dataloader = DataLoader(sftDataset(TrainingArgs.data_dir, TrainingArgs.tokenizer_path), batch_size=10, shuffle=True, num_workers=1, collate_fn=collate_batch)
+    dataloader = DataLoader(
+        sftDataset(TrainingArgs.data_dir, TrainingArgs.tokenizer_path), 
+        batch_size=32,
+        shuffle=True, 
+        num_workers=1, 
+        collate_fn=partial(_collate_batch, max_model_len=TrainingArgs.max_model_len)
+    )
+
     model = MY_RWKV_RNN(TrainingArgs.model_path)
     optimizer = torch.optim.Adam(model.parameters(), TrainingArgs.learning_rate)
     loss_fn = torch.nn.CrossEntropyLoss()
@@ -105,12 +138,11 @@ if __name__ == "__main__":
         print(f"############ epoch {epoch} ############")
         # assert is_zero_grad(optimizer), "Between two epoches the optimizer is not set to zero state."
         for step, (input_ids,attn_mask,target_ids) in enumerate(tqdm(dataloader), start=1):
-            raise NotImplementedError("dataloader is not ready")
             state = model.new_zero_state(batch_size=1)
             logits, _ = model.forward(input_ids, state, attn_mask)
             loss = loss_fn(target_ids, logits) / attn_mask.sum()
             loss.backward()
-            if step % TrainingArgs.accumulation_steps == 0 or step == len(dataset) - 1:
+            if step % TrainingArgs.accumulation_steps == 0 or step == len(dataloader) - 1:
                 optimizer.step()
                 optimizer.zero_grad()
 
